@@ -160,11 +160,12 @@ const routes = {
   },
 
   'POST /api/calls': async (req, res) => {
-    const { callerNumber, lang, channel, consent } = await body(req);
+    const { callerNumber, lang, channel, consent, personaId } = await body(req);
     const ch = channel === 'rehearsal' ? 'rehearsal' : 'citizen-merge';
     if (ch === 'citizen-merge' && consent !== true) throw fail(400, 'The citizen has to consent to recording before the decoy joins the call');
     if (callerNumber != null && (typeof callerNumber !== 'string' || callerNumber.length > 40)) throw fail(400, 'Invalid caller number');
-    const call = startCall(store, { callerNumber, lang, channel: ch });
+    if (personaId !== undefined && !['teacher', 'shopowner', 'student'].includes(personaId)) throw fail(400, 'Choose a supported persona');
+    const call = startCall(store, { callerNumber, lang, channel: ch, personaId });
     // Caller ID check before the first word: has this number called the decoy before?
     const hits = call.callerNumber ? liveHits(closedGraph(), [{ type: 'phone', value: call.callerNumber }]) : [];
     if (hits.length) call.events.push({ t: 0, stage: 'HOOK', reason: `Known number: already in ring ${hits[0].ringId}` });

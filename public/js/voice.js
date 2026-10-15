@@ -31,7 +31,7 @@ function scoreVoice(v, lang, gender) {
 }
 
 export function rankVoices(lang, gender) {
-  return voices.map((v) => [v, scoreVoice(v, lang, gender)]).filter(([, s]) => s > -50).sort((a, b) => b[1] - a[1]).map(([v]) => v);
+  return voices.map((v) => [v, scoreVoice(v, lang, gender)]).filter(([, s]) => s > -50).sort((a, b) => b[1] - a[1] || a[0].name.localeCompare(b[0].name)).map(([v]) => v);
 }
 
 export function pickVoice(lang, gender, exclude) {
@@ -42,12 +42,35 @@ export function pickVoice(lang, gender, exclude) {
 
 export const isNatural = (v) => /natural|neural|online/i.test(v?.name || '');
 
+export async function createVoiceProfile({ lang = 'en', gender = 'female', rate = 0.96, exclude } = {}) {
+  if (!voices.length && synth) await new Promise((resolve) => {
+    const ready = () => { if (voices.length) finish(); };
+    const finish = () => { clearTimeout(timer); listeners.delete(ready); resolve(); };
+    const timer = setTimeout(finish, 1500);
+    listeners.add(ready);
+  });
+  const voice = pickVoice(lang, gender, exclude);
+  // Retain this voice object even when the browser refreshes or reorders its voice list.
+  return Object.freeze({ voice, lang, rate, pitch: 1, name: voice?.name || 'System default voice', natural: isNatural(voice) });
+}
+
+function numberWords(n) {
+  const small = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+  if (n < 20) return small[n];
+  if (n < 100) return ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'][Math.floor(n / 10)] + (n % 10 ? ' ' + small[n % 10] : '');
+  for (const [unit, label] of [[10000000,'crore'],[100000,'lakh'],[1000,'thousand'],[100,'hundred']]) if (n >= unit) return numberWords(Math.floor(n / unit)) + ' ' + label + (n % unit ? ' ' + numberWords(n % unit) : '');
+}
+
 // Say it the way a person would: digits one by one, bank codes spelled out.
 const KEEP = new Set(['my', 'by', 'why', 'try', 'fly', 'shy', 'sky', 'dry', 'cry', 'hmm', 'hm', 'mm', 'sh', 'mr', 'mrs', 'ms', 'st', 'nd', 'rd', 'th', 'gym', 'rhythm', 'pvt', 'ltd']);
 const SPELL = new Set(['rbi', 'sbi', 'upi', 'kyc', 'ifsc', 'otp', 'pan', 'ybl', 'ibl', 'axl', 'apl', 'hdfc', 'icici', 'cbi', 'neft', 'imps', 'atm', 'cvv', 'emi', 'gst', 'tneb', 'ncb', 'ed', 'id']);
 export function speakable(text) {
   return text
-    .replace(/\d{2,}/g, (d) => d.split('').join(' '))
+    .replace(/(?:₹|\bINR\s*|\bRs\.?\s*)(\d[\d,]*)(?:\s*rupees)?|(\d[\d,]*)\s*rupees\b/gi, (match, before, after) => {
+      const n = Number((before || after).replace(/,/g, ''));
+      return Number.isSafeInteger(n) && n >= 0 && n < 1e10 ? `${numberWords(n)} rupees` : match;
+    })
+    .replace(/\d{4,}/g, (d) => d.split('').join(' '))
     .replace(/\bok(axis|sbi|hdfcbank|icici)\b/gi, 'ok $1')
     .replace(/\bhdfcbank\b/gi, 'hdfc bank')
     .replace(/\b[a-z]{2,5}\b/gi, (w) => (SPELL.has(w.toLowerCase()) || (/^[bcdfghjklmnpqrstvwxyz]+$/i.test(w) && !KEEP.has(w.toLowerCase())) ? w.toUpperCase().split('').join(' ') : w));
@@ -65,16 +88,11 @@ export const isSpeechPlaying = () => current !== null;
 export function onSpeechActivity(listener) { playbackListeners.add(listener); return () => playbackListeners.delete(listener); }
 function notifyPlayback(playing) { for (const listener of playbackListeners) listener(playing); }
 
-export function speak(text, { lang = 'en', rate = 0.94, pitch = 1, gender = 'female', exclude, filler = false, young = false, onstart } = {}) {
+export function speak(text, { lang = 'en', rate = 0.96, pitch = 1, gender = 'female', exclude, profile, onstart } = {}) {
   if (!synth) return sleep(600);
   stopSpeaking();
-  const voice = pickVoice(lang, gender, exclude);
-  let said = speakable(text);
-  if (filler && Math.random() < 0.4 && !/^(okay|haan|hmm|acha|arre|oh|wait|हाँ|अच्छा|अरे|சரி)/i.test(text)) {
-    const set = FILLERS[lang] || FILLERS.en;
-    const list = young ? set.young : set.elder;
-    said = `${list[Math.floor(Math.random() * list.length)]} ${said}`;
-  }
+  const voice = profile ? profile.voice : pickVoice(lang, gender, exclude);
+  const said = speakable(text).replace(/\.{3,}/g, ',');
   return new Promise((resolve) => {
     const me = { done: false };
     let watchdog;
@@ -91,9 +109,9 @@ export function speak(text, { lang = 'en', rate = 0.94, pitch = 1, gender = 'fem
     // One utterance per reply: separate utterances add a 200-500 ms gap each on Windows voices.
     const u = new SpeechSynthesisUtterance(said);
     if (voice) u.voice = voice;
-    u.lang = voice?.lang || LANG_TAG[lang];
-    u.rate = rate * (0.97 + Math.random() * 0.06);
-    u.pitch = isNatural(voice) ? 1 : pitch;
+    u.lang = voice?.lang || LANG_TAG[profile?.lang || lang];
+    u.rate = profile?.rate ?? rate;
+    u.pitch = profile?.pitch ?? (isNatural(voice) ? 1 : pitch);
     if (onstart) u.onstart = onstart;
     u.onend = finish;
     u.onerror = finish;

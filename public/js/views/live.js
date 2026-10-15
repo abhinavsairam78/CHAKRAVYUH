@@ -1,6 +1,6 @@
 // Live decoy: the citizen merges a scam call in; the persona talks; intelligence builds up live.
 import { $, esc, mmss, sleep, api, toast, rupees, ID_LABEL, ringColor } from '../util.js';
-import { speak, stopSpeaking, warmUp, renderVoiceSettings, onVoices, FILLERS, pickVoice, LANG_TAG, onSpeechActivity, isSpeechPlaying } from '../voice.js';
+import { speak, stopSpeaking, warmUp, renderVoiceSettings, onVoices, LANG_TAG, onSpeechActivity, isSpeechPlaying, createVoiceProfile } from '../voice.js';
 import { createRecognitionGate } from '../recognition.js';
 
 const STAGE_LABEL = { HOOK: 'Hook', TRUST: 'Trust', PRESSURE: 'Pressure', PAYMENT: 'Payment ask', EXTRACT: 'Extract', STALL: 'Stall' };
@@ -47,6 +47,7 @@ export const view = {
                 <div class="form-row">
                   <label class="field">Caller number (caller ID)<input id="caller" inputmode="tel" placeholder="+91 98401 23456" autocomplete="off"></label>
                   <label class="field">Persona language<select id="lang"><option value="en">English (India)</option><option value="hi">हिन्दी Hindi</option><option value="ta">தமிழ் Tamil</option></select></label>
+                  <label class="field">Person on the call<select id="persona"><option value="teacher">Kamala · retired teacher</option><option value="shopowner">Ramesh · shop owner</option><option value="student">Arjun · student</option></select></label>
                 </div>
               </div>
             </li>
@@ -87,6 +88,7 @@ export const view = {
             <div class="scamtype" id="p-type"><span>Classifying…</span></div>
           </div>
           <div class="honeytoken" id="p-honey" hidden></div>
+          <p id="call-voice" class="fine"></p>
           <ol class="stages" id="stages"></ol>
           <p class="reason" id="reason">Listening to the caller's opening.</p>
           <ol class="transcript" id="transcript" aria-live="polite"></ol>
@@ -301,19 +303,10 @@ async function decoySpeaks(text) {
   if (active.capture) active.capture.paused = true; // keep our own voice out of the caller's voiceprint
   if (rec) setMic('speaking');
   await sleep(40 + Math.random() * 100);
-  await speak(text, { lang: active.lang, rate: p.rate || 0.94, pitch: p.pitch || 1, gender: p.gender || 'female', filler: true, young: active.call?.persona?.id === 'student', onstart: markLatency });
+  await speak(text, { lang: active.lang, profile: active.voiceProfile, rate: p.rate || 0.96, gender: p.gender || 'female', onstart: markLatency });
   if (!active) return;
   active.speaking = false;
   active.spokeUntil = performance.now();
-}
-
-async function quickFiller() {
-  if (!active || active.mute || active.speaking) return;
-  const set = FILLERS[active.lang] || FILLERS.en;
-  const p = active.call?.persona?.voice || {};
-  active.speaking = true;
-  await speak(set.elder[Math.floor(Math.random() * set.elder.length)], { lang: active.lang, rate: p.rate || 0.94, gender: p.gender || 'female', onstart: markLatency });
-  if (active) active.speaking = false;
 }
 
 // ---------- Listening (live mic) ----------
@@ -398,13 +391,17 @@ async function begin({ mode, callerNumber, lang, channel = 'citizen-merge', mute
   $('#reveal', root).hidden = true;
   let res;
   try {
-    res = await api('/api/calls', { callerNumber: callerNumber ?? $('#caller', root).value, lang: lang || $('#lang', root).value, channel, consent });
+    res = await api('/api/calls', { callerNumber: callerNumber ?? $('#caller', root).value, lang: lang || $('#lang', root).value, channel, consent, personaId: $('#persona', root).value });
   } catch (err) {
     return toast(err.message, 'warn');
   }
   const { call, reply, hits } = res;
   active = { id: call.id, mode, lang: call.lang, call, startedAt: Date.now(), mute, callerHits: hits, hits: [] };
-  lastPersona = 'neutral';
+  const thisCall = active;
+  active.voiceProfile = await createVoiceProfile({ lang: call.lang, gender: call.persona.voice?.gender || 'female', rate: call.persona.id === 'student' ? 1 : 0.96 });
+  if (active !== thisCall || thisCall.stopped) return;
+  $('#call-voice', root).textContent = `Voice locked for this call: ${active.voiceProfile.name}${active.voiceProfile.natural ? '' : ' · Browser voice quality; choose a natural voice before the next call if available.'}`;
+  lastPersona = call.persona.id;
   $('#call-idle', root).hidden = true;
   $('#call-live', root).hidden = false;
   $('#line-status', root).textContent = `Live · ${call.id}`;
@@ -412,7 +409,7 @@ async function begin({ mode, callerNumber, lang, channel = 'citizen-merge', mute
   $('#side-idle', root).hidden = true;
   $('#side-live', root).hidden = false;
   app.setLive(call.id);
-  $('#reason', root).textContent = 'Answering as a neutral elderly voice while the caller explains.';
+  $('#reason', root).textContent = `Answering as ${call.persona.name}. This person and voice stay consistent throughout the call.`;
   $('#say', root).placeholder = mode === 'rehearsal' ? 'Rehearsal is playing…' : 'Type what the caller says, then Enter';
   $('#say', root).disabled = mode === 'rehearsal';
   $('#latency', root).textContent = '';
@@ -437,15 +434,11 @@ async function begin({ mode, callerNumber, lang, channel = 'citizen-merge', mute
 async function sendTurn(text) {
   if (!active || active.stopped) return;
   if (active.speaking) stopSpeaking();
-  const early = setTimeout(quickFiller, 350);
   let res;
   try {
     res = await api(`/api/calls/${active.id}/turn`, { text });
   } catch (err) {
-    clearTimeout(early);
     return toast(err.message, 'warn');
-  } finally {
-    clearTimeout(early);
   }
   if (!active || active.stopped) return;
   if (res.hits?.length) {
@@ -511,10 +504,11 @@ async function runRehearsal(script) {
   await begin({ mode: 'rehearsal', callerNumber: script.callerNumber, lang: 'en', channel: 'rehearsal', mute: !aloud });
   const me = active;
   if (!me) return;
+  const callerVoice = aloud ? await createVoiceProfile({ lang: 'en', gender: 'male', rate: 1.02, exclude: me.voiceProfile?.voice }) : null;
   for (const line of script.lines) {
     if (me.stopped) return;
     showInterim(line);
-    if (aloud) await speak(line, { lang: 'en', rate: 1.05, pitch: 0.9, gender: 'male', exclude: pickVoice('en', me.call?.persona?.voice?.gender || 'female') });
+    if (aloud) await speak(line, { profile: callerVoice });
     else await sleep(1000);
     showInterim('');
     if (me.stopped) return;

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { analyseCall, parseTranscript, reviewQueue } from '../lib/analysis.mjs';
 import { validateEvidenceSelection, prioritiseEvidence, setDialogueMode, validDialogueCandidate } from '../lib/llm.mjs';
-import { createStore, startCall, purgeCall } from '../lib/calls.mjs';
+import { createStore, startCall, purgeCall, scammerTurn } from '../lib/calls.mjs';
 import { withCallLock, busyCalls } from '../lib/turn-lock.mjs';
 import { advanceCase } from '../lib/cases.mjs';
 
@@ -66,4 +66,13 @@ test('case workflow requires review and acknowledgement before escalation', () =
   assert.equal(advanceCase(store, ring, { status: 'REVIEWED' }).status, 'REVIEWED');
   assert.throws(() => advanceCase(store, ring, { status: 'FILED' }), { status: 400 });
   assert.equal(advanceCase(store, ring, { status: 'FILED', ncrpAck: 'DEMO-123' }).status, 'FILED');
+});
+test('selected person stays on the call when classification changes', () => {
+  const store = createStore(null);
+  const call = startCall(store, { personaId: 'teacher' });
+  const name = call.honeytoken.fullName;
+  scammerTurn(call, 'Your SBI KYC expired. Your account will be blocked.', 2);
+  assert.equal(call.scamType, 'kyc'); assert.equal(call.persona.id, 'teacher');
+  scammerTurn(call, 'CBI digital arrest warrant. Narcotics money laundering police case.', 8);
+  assert.equal(call.persona.id, 'teacher'); assert.equal(call.honeytoken.fullName, name);
 });

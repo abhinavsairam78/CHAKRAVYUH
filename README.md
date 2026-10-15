@@ -69,6 +69,8 @@ Backup: the *Rehearsal* buttons on Live decoy play calls 1 and 2 without a micro
 
 **Using speakers with the microphone:** recognition pauses during all app speech, including AI fillers and voice previews. It starts a fresh recognition session 650 ms after playback ends to let speaker echoes settle. Wait for **Listening to caller** before speaking. Microphone interruptions during the decoy's spoken turn are disabled in this speaker-safe mode. Delayed results from old recognition sessions are discarded.
 
+**Consistent voices:** select Kamala, Ramesh or Arjun before answering. The selected identity stays through classification changes, and its browser voice, rate and pitch are locked until hang-up. Browser voice-list updates and voice-picker changes apply to future calls. Spoken filler interruptions are removed. Currency amounts are read as words while long account numbers remain digit-by-digit. Naturalness depends on the voices available in your browser; choose an available natural voice before starting. The active call displays its locked voice name.
+
 ## How the proposal maps to this build
 
 | Proposal | In this build | Production path |
