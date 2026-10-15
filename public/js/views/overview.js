@@ -11,8 +11,8 @@ export const view = {
     root = el;
     el.innerHTML = `
       <div class="overview-heading">
-        <div><p class="overline">OPERATIONS OVERVIEW <span>·</span> SYNTHETIC DEMO DATA</p><h2>Investigations at a glance</h2><p>Follow captured calls, shared identifiers, and the cases that still need action.</p></div>
-        <a class="btn primary overview-action" href="#/live">Start a decoy call <span aria-hidden="true">↗</span></a>
+        <div class="overview-intro"><p class="overline"><span class="editorial-dot" aria-hidden="true"></span> FRAUD INTELLIGENCE, CONNECTED</p><h2>Turn the call.<br><span>Trace the network.</span></h2><p>Every conversation leaves a trail. Follow the identifiers, connect the calls, and build the case.</p><div class="editorial-actions"><a class="btn primary overview-action" href="#/live">Start a decoy call <span aria-hidden="true">↗</span></a><a class="editorial-secondary" href="#/analyst">Explore the evidence <span aria-hidden="true">↗</span></a></div></div>
+        <a class="network-study" href="#/rings" aria-label="Explore the ring graph"><span class="overline">THE BIGGER PICTURE / 01</span><svg viewBox="0 0 280 180" aria-hidden="true"><g fill="none" stroke="currentColor"><ellipse cx="140" cy="90" rx="110" ry="50" transform="rotate(-30 140 90)"/><ellipse cx="140" cy="90" rx="110" ry="50" transform="rotate(30 140 90)"/><ellipse cx="140" cy="90" rx="45" ry="75"/><path d="M40 90h200M140 15v150" stroke-dasharray="2 7" opacity=".35"/></g><g fill="currentColor"><circle cx="140" cy="90" r="5"/><circle cx="68" cy="50" r="4"/><circle cx="213" cy="131" r="4"/><circle cx="213" cy="49" r="4"/><circle cx="69" cy="132" r="4"/></g></svg><span class="network-study-caption">Separate calls.<br>One connected picture.<b aria-hidden="true">↗</b></span></a>
       </div>
       <dl class="overview-metrics" id="ov-metrics"></dl>
       <div class="overview-workspace">
