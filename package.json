@@ -1,0 +1,13 @@
+{
+  "name": "chakravyuh",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "AI scam-call decoy and fraud-ring intelligence (Founder's Code 2026 prototype)",
+  "scripts": {
+    "start": "node server.mjs",
+    "start:ai": "node scripts/start-ai.mjs",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" }
+}
