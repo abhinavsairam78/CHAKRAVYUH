@@ -10,6 +10,7 @@ import { view as playbooks } from './views/playbooks.js';
 import { view as integrations } from './views/integrations.js';
 import { view as privacy } from './views/privacy.js';
 import { view as analyst } from './views/analyst.js';
+import { hosted, installHostedExports } from './hosted.js';
 
 const VIEWS = [overview, live, analyst, rings, cases, feed, calls, playbooks, integrations, privacy];
 let state = null;
@@ -56,21 +57,42 @@ function route() {
 }
 window.addEventListener('hashchange', route);
 
-const events = new EventSource('/api/events');
-events.addEventListener('state', (e) => {
-  state = JSON.parse(e.data);
+function applyState(next) {
+  state = next;
   $('#conn').className = 'conn on';
   $('#connection-label').textContent = 'Connected';
   live.update(state); // the live call keeps running while you look at other pages
   rings.update(state); // the graph keeps settling in the background
   if (current && current !== live && current !== rings) current.update(state);
   renderNavCounts();
-});
-events.addEventListener('reveal', () => {});
-events.onerror = () => {
+}
+function disconnected() {
   $('#conn').className = 'conn off';
   $('#connection-label').textContent = 'Reconnecting';
-};
+}
+if (hosted) {
+  let refreshing = false;
+  const refresh = async () => {
+    if (refreshing) return;
+    refreshing = true;
+    try { applyState(await api('/api/state')); } catch { disconnected(); }
+    finally { refreshing = false; }
+  };
+  window.addEventListener('ckv-state-changed', refresh);
+  window.addEventListener('ckv-storage-warning', () => toast('Browser storage is full or unavailable. Progress will last until this page closes.', 'warn'));
+  window.addEventListener('ckv-export-error', (event) => toast(event.detail, 'warn'));
+  installHostedExports();
+  const badge = document.querySelector('.demo-badge');
+  badge.textContent = 'BROWSER DEMO';
+  badge.title = 'Synthetic demo data. Progress is saved in this browser.';
+  document.querySelector('.demo-note span').textContent = 'Synthetic data. Demo progress is saved in this browser; local AI runs in the laptop version.';
+  refresh();
+  setInterval(() => { if (!document.hidden) refresh(); }, 20000);
+} else {
+  const events = new EventSource('/api/events');
+  events.addEventListener('state', (event) => applyState(JSON.parse(event.data)));
+  events.onerror = disconnected;
+}
 
 function renderNavCounts() {
   const k = state.kpis;

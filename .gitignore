@@ -3,3 +3,8 @@ data/
 .env
 .env.*
 !.env.example
+.vercel/
+dist/
+node_modules/
+
+.vercel

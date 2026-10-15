@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { createStore, startCall, scammerTurn, decoyReply, endCall, publicCall, purgeCall } from './lib/calls.mjs';
@@ -19,12 +20,23 @@ const root = resolve(import.meta.dirname, 'public');
 const port = Number(process.env.PORT || 4310);
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml' };
 
-const store = createStore(process.env.CHAKRAVYUH_DATA_FILE || resolve(import.meta.dirname, 'data', 'store.json'));
+const storeContext = new AsyncLocalStorage();
+const localStore = createStore(process.env.VERCEL ? null : process.env.CHAKRAVYUH_DATA_FILE || resolve(import.meta.dirname, 'data', 'store.json'));
+const store = new Proxy(localStore, { get(target, key) { return (storeContext.getStore() || target)[key]; } });
 const seedAll = (s) => {
   seedHistory(s);
   seedCases(s, buildGraph(s.data.calls));
 };
 if (!store.data.calls.length || !store.data.cases) store.reset(seedAll);
+
+export async function withDemoStore(data, operation) {
+  const isolated = createStore(null);
+  if (data) {
+    if (!Array.isArray(data.calls) || data.calls.length > 1500 || !Number.isInteger(data.nextId) || data.nextId < 1001) throw fail(400, 'Invalid browser demo state');
+    Object.assign(isolated.data, data);
+  } else isolated.reset(seedAll);
+  return storeContext.run(isolated, async () => { const result = await operation(); return { ...result, state: isolated.data }; });
+}
 
 const clients = new Set();
 let lastDossierMs = store.data.lastDossierMs ?? null;
@@ -70,6 +82,7 @@ function snapshot() {
 
 let pending = null;
 function broadcast(event = 'state', payload) {
+  if (process.env.VERCEL) return;
   if (event === 'state' && !payload) {
     // Coalesce bursts (a telco batch ends many calls at once) into one snapshot.
     clearTimeout(pending);
@@ -338,12 +351,16 @@ function match(method, pathname) {
   return null;
 }
 
-const server = createServer(async (req, res) => {
+export async function handleRequest(req, res) {
   try {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'same-origin');
     res.setHeader('X-Frame-Options', 'DENY');
-    if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) throw fail(403, 'Cross-origin requests are not allowed');
+    if (req.headers.origin) {
+      let origin;
+      try { origin = new URL(req.headers.origin); } catch { throw fail(403, 'Invalid origin'); }
+      if (origin.host !== req.headers.host || !['http:', 'https:'].includes(origin.protocol)) throw fail(403, 'Cross-origin requests are not allowed');
+    }
     let pathname;
     try { pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); } catch { throw fail(400, 'Invalid URL'); }
     const route = match(req.method, pathname);
@@ -358,4 +375,7 @@ const server = createServer(async (req, res) => {
     if (res.headersSent) return res.end();
     json(res, err.status || (err.code === 'ENOENT' ? 404 : 500), { error: err.message });
   }
-}).listen(port, '127.0.0.1', () => console.log(`Chakravyuh: http://127.0.0.1:${server.address().port}${llmEnabled() ? ` (dialogue model: ${llmLabel()})` : ''}`));
+}
+if (!process.env.VERCEL) {
+  const server = createServer(handleRequest).listen(port, '127.0.0.1', () => console.log(`Chakravyuh: http://127.0.0.1:${server.address().port}${llmEnabled() ? ` (dialogue model: ${llmLabel()})` : ''}`));
+}

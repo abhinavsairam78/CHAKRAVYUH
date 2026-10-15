@@ -1,3 +1,4 @@
+import { hosted, hostedRequest } from './hosted.js';
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -29,6 +30,7 @@ export function countdown(ms) {
 export const rupees = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
 export async function api(path, body, method) {
+  if (hosted) return (await hostedRequest(path, body, method)).data;
   const res = await fetch(path, {
     method: method || (body === undefined ? 'GET' : 'POST'),
     headers: { 'Content-Type': 'application/json' },

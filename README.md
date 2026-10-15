@@ -6,6 +6,12 @@ A citizen merges a suspicious call into the decoy number (or a telco diverts a f
 
 ## Run
 
+### Vercel browser demo
+
+`vercel --prod` builds the static console and a stateless demo API. Each visitor's demo history is saved in their browser and sent with requests; it survives function restarts and remains separate from other visitors. Dossiers and CSV/JSON exports use that same browser session. Clearing browser storage resets its progress. This mode is for synthetic hackathon demonstrations, not shared operational records. The hosted version uses the playbook and local evidence rules; the laptop-only Ollama model requires `npm run start:ai` locally.
+
+Vercel runs `node scripts/build-vercel.mjs`. No database or model keys are required for the hosted demo.
+
 Requires Node.js 20 or newer. No packages, no API keys, works offline.
 
 ```powershell
